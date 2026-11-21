@@ -21,4 +21,4 @@ Then copy the code from "showAnswers.js" and paste it into there, then press ent
 
 - Multiple choice
 - Written answers
-- 
+- Memory

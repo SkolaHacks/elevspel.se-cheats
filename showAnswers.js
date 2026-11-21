@@ -26,7 +26,8 @@
             set: (n, a) => `Set [${n}] = ${a}`, filled: (n) => `Filled ${n} fields`,
             filledCount: (d, t) => `${d} / ${t} done`,
             inlineOn: 'Inline labels on', inlineOff: 'Inline labels off',
-            mode: 'Mode', modeCloze: 'Fill in', modeMC: 'Multiple choice', modeFree: 'Free input', modeNone: 'None',
+            mode: 'Mode', modeCloze: 'Fill in', modeMC: 'Multiple choice', modeFree: 'Free input', modeMemory: 'Memory', modeNone: 'None',
+            pair: (a, b) => `Cards ${a} + ${b}`,
             answering: (n, t) => `Answering ${n} / ${t}…`,
             doneSteps: 'Done. Press Next to finish.', notCurrent: 'Go to that question first',
             general: 'General', behaviour: 'Behaviour',
@@ -51,7 +52,8 @@
             set: (n, a) => `Satte [${n}] = ${a}`, filled: (n) => `Fyllde i ${n} rutor`,
             filledCount: (d, t) => `${d} / ${t} klara`,
             inlineOn: 'Etiketter vid rutor på', inlineOff: 'Etiketter vid rutor av',
-            mode: 'Läge', modeCloze: 'Fyll i', modeMC: 'Flerval', modeFree: 'Skriv själv', modeNone: 'Inget',
+            mode: 'Läge', modeCloze: 'Fyll i', modeMC: 'Flerval', modeFree: 'Skriv själv', modeMemory: 'Memory', modeNone: 'Inget',
+            pair: (a, b) => `Kort ${a} + ${b}`,
             answering: (n, t) => `Svarar ${n} / ${t}…`,
             doneSteps: 'Klart. Tryck Nästa för att avsluta.', notCurrent: 'Gå till den frågan först',
             general: 'Allmänt', behaviour: 'Beteende',
@@ -168,6 +170,46 @@
         });
     };
 
+    const detectMemory = () => {
+        const cards = [...document.querySelectorAll('#game_board .card[data-toggle]')];
+        if (!cards.length) return null;
+        const groups = new Map();
+        cards.forEach((c) => {
+            const k = c.dataset.toggle;
+            if (!groups.has(k)) groups.set(k, []);
+            groups.get(k).push(c);
+        });
+        const num = (c) => c.querySelector('.cardNumber')?.textContent.trim() || '?';
+        const gone = (c) =>
+            !c.querySelector('input[name="cardsLeft[]"]') ||
+            /matched|found|solved|done|removed/.test(c.className) ||
+            getComputedStyle(c).visibility === 'hidden' ||
+            getComputedStyle(c).opacity === '0' ||
+            !visible(c);
+        return [...groups.values()]
+            .filter((g) => g.length >= 2)
+            .sort((a, b) => +num(a[0]) - +num(b[0]))
+            .map(([a, b], i) => ({
+                n: i,
+                problem: T().pair(num(a), num(b)),
+                answer: a.querySelector('.card_text')?.textContent.trim() || a.querySelector('input')?.value || '?',
+                cards: [a, b],
+                pairNo: i + 1,
+                stepped: true,
+                noNext: true,
+                isCurrent: () => true,
+                isDone: () => gone(a) && gone(b),
+                fill: async () => {
+                    if (gone(a) && gone(b)) return false;
+                    a.click();
+                    await sleep(250);
+                    b.click();
+                    await sleep(cfg.delay + 400);
+                    return true;
+                },
+            }));
+    };
+
     const detectCloze = () => {
         const hidden = [...document.querySelectorAll('input[name="correct[]"]')];
         if (!hidden.length) return null;
@@ -221,6 +263,7 @@
     };
 
     const DETECTORS = [
+        { key: 'memory', name: () => T().modeMemory, run: detectMemory },
         { key: 'free', name: () => T().modeFree, run: detectFree },
         { key: 'mc', name: () => T().modeMC, run: detectMultipleChoice },
         { key: 'cloze', name: () => T().modeCloze, run: detectCloze },
@@ -235,7 +278,7 @@
         mode = null;
         return [];
     };
-    const stepped = () => mode?.key === 'mc' || mode?.key === 'free';
+    const stepped = () => mode?.key === 'mc' || mode?.key === 'free' || mode?.key === 'memory';
 
     const css = `
         #${ID}{
@@ -335,6 +378,8 @@
         .es-answer{display:inline-block; margin-left:6px; padding:1px 6px; border-radius:2px;
             background:#151515; color:#e5a50a; border:1px solid #000;
             font:600 12px Consolas,monospace; vertical-align:middle; box-shadow:0 1px 3px rgba(0,0,0,.4)}
+        .es-pair{position:absolute; top:4px; left:4px; margin:0; z-index:5; pointer-events:none}
+        .card{position:relative}
         .es-correct{outline:3px solid #e5a50a !important; outline-offset:2px; box-shadow:0 0 12px rgba(229,165,10,.6) !important}
     `;
 
@@ -377,7 +422,7 @@
             if (!it) return;
             const ok = it.isDone();
             row.classList.toggle('ok', ok);
-            row.classList.toggle('cur', stepped() && it.isCurrent());
+            row.classList.toggle('cur', stepped() && !it.noNext && it.isCurrent());
             if (ok) done++;
         });
         const c = $('.sb .r');
@@ -389,7 +434,14 @@
         document.querySelectorAll('.es-correct').forEach((el) => el.classList.remove('es-correct'));
         if (!labelsOn) return;
         items.forEach((it) => {
-            if (it.highlight) {
+            if (it.cards) {
+                it.cards.forEach((c) => {
+                    const tag = document.createElement('span');
+                    tag.className = 'es-answer es-pair';
+                    tag.textContent = it.pairNo;
+                    c.appendChild(tag);
+                });
+            } else if (it.highlight) {
                 it.anchor?.classList.add('es-correct');
             } else {
                 const tag = document.createElement('span');
@@ -433,6 +485,7 @@
                 setStatus(() => T().answering(i + 1, items.length));
                 await it.fill();
                 markFilled();
+                if (it.noNext) continue;
                 if (!cfg.autoAdvance || i === items.length - 1) break;
                 await advance(it);
             }
