@@ -13,6 +13,8 @@
     document.querySelectorAll('.es-answer').forEach((el) => el.remove());
     document.querySelectorAll('.es-correct').forEach((el) => el.classList.remove('es-correct'));
     clearInterval(window.__esAnswerPoll);
+    if (window.__esHotkey) removeEventListener('keydown', window.__esHotkey, true);
+    document.querySelectorAll('.es-cell').forEach((el) => el.classList.remove('es-cell'));
 
     const STRINGS = {
         en: {
@@ -78,6 +80,30 @@
         autoCheck: true,
         typeChars: false,
         delay: 600,
+        hotkey: 'F2',
+        startMinimized: false,
+        rememberPos: true,
+        pos: null,
+        width: 320,
+        opacity: 100,
+        accent: 'blue',
+        badgeColor: 'orange',
+        fontSize: 12,
+        compact: false,
+        jitter: 0,
+        clozeTypeChars: false,
+        clozeSkipFilled: false,
+        mcPause: 0,
+        mcHideWrong: false,
+        typeSpeed: 110,
+        freeUseAlt: false,
+        memFlipGap: 250,
+        memPairDelay: 1000,
+        memOrder: 'board',
+        gridColor: 'yellow',
+        gridStepDelay: 40,
+        gridOrder: 'list',
+        gridShowPath: true,
     };
 
     const load = () => {
@@ -89,7 +115,162 @@
     };
 
     let cfg = load();
-    const T = () => STRINGS[cfg.lang] || STRINGS.en;
+    const EXTRA = {
+        en: {
+            modeGrid: 'Letter board', notOnBoard: 'Not on board',
+            copyright: 'Copyright (C) TeamZedra. All Rights Reserved.',
+            cats: {
+                general: 'General', appearance: 'Appearance', behaviour: 'Behaviour', cloze: 'Fill in',
+                mc: 'Multiple choice', free: 'Free input', memory: 'Memory', grid: 'Letter board',
+            },
+            set: {
+                lang: ['Language', 'Language of the panel'],
+                hotkey: ['Toggle hotkey', 'Key that shows or hides the panel'],
+                startMinimized: ['Start minimized', 'Open the panel collapsed'],
+                rememberPos: ['Remember position', 'Reopen where you last dragged it'],
+                width: ['Panel width (px)', 'Width of the panel'],
+                opacity: ['Opacity (%)', 'Panel transparency'],
+                accent: ['Accent colour', 'Colour of the main button and focus rings'],
+                badgeColor: ['Badge colour', 'Colour of inline answer badges and outlines'],
+                fontSize: ['Font size (px)', 'Text size in the panel'],
+                compact: ['Compact rows', 'Tighter property rows'],
+                autoFill: ['Auto-fill on load', 'Start answering as soon as the panel opens'],
+                inlineDefault: ['Inline labels on load', 'Show answers on the board from the start'],
+                autoRefresh: ['Auto-refresh', 'Re-read answers when the board changes'],
+                delay: ['Step delay (ms)', 'Wait between answers'],
+                jitter: ['Random extra delay (ms)', 'Adds up to this much random time to each step'],
+                autoAdvance: ['Auto-advance', 'Press Next after each answer'],
+                clozeTypeChars: ['Type letter by letter', 'Type each answer one key at a time'],
+                clozeSkipFilled: ['Skip filled boxes', 'Leave boxes that already contain text'],
+                mcPause: ['Pause before click (ms)', 'Wait before choosing an answer'],
+                mcHideWrong: ['Dim wrong choices', 'With inline labels on, fade the wrong buttons'],
+                autoCheck: ['Auto-check', 'Press Check after typing'],
+                typeChars: ['Type letter by letter', 'Type one key at a time'],
+                typeSpeed: ['Typing speed (ms/key)', 'Average time per key when typing'],
+                freeUseAlt: ['Prefer alternative', 'Type the alternative spelling when one exists'],
+                memFlipGap: ['Gap between cards (ms)', 'Time between flipping the two cards'],
+                memPairDelay: ['Pause after pair (ms)', 'Time before flipping the next pair'],
+                memOrder: ['Pair order', 'Order the pairs are flipped in'],
+                gridColor: ['Highlight colour', 'Colour used to mark words on the board'],
+                gridStepDelay: ['Drag speed (ms/letter)', 'Time per letter when selecting a word'],
+                gridOrder: ['Word order', 'Order the words are selected in'],
+                gridShowPath: ['Show word path', 'With inline labels on, mark every word on the board'],
+            },
+            opt: {
+                off: 'Off', board: 'Board order', random: 'Random', list: 'List order',
+                longest: 'Longest first', shortest: 'Shortest first',
+                blue: 'Blue', orange: 'Orange', green: 'Green', purple: 'Purple', red: 'Red',
+                cyan: 'Cyan', pink: 'Pink', yellow: 'Yellow',
+            },
+        },
+        sv: {
+            modeGrid: 'Bokstavsbräde', notOnBoard: 'Finns inte på brädet',
+            copyright: 'Copyright (C) TeamZedra. All Rights Reserved.',
+            cats: {
+                general: 'Allmänt', appearance: 'Utseende', behaviour: 'Beteende', cloze: 'Fyll i',
+                mc: 'Flerval', free: 'Skriv själv', memory: 'Memory', grid: 'Bokstavsbräde',
+            },
+            set: {
+                lang: ['Språk', 'Panelens språk'],
+                hotkey: ['Snabbtangent', 'Tangent som visar eller döljer panelen'],
+                startMinimized: ['Starta minimerad', 'Öppna panelen hopfälld'],
+                rememberPos: ['Kom ihåg position', 'Öppna där du senast släppte den'],
+                width: ['Panelbredd (px)', 'Panelens bredd'],
+                opacity: ['Opacitet (%)', 'Panelens genomskinlighet'],
+                accent: ['Accentfärg', 'Färg på huvudknappen och fokusramar'],
+                badgeColor: ['Märkesfärg', 'Färg på svarsmärken och ramar'],
+                fontSize: ['Textstorlek (px)', 'Textstorlek i panelen'],
+                compact: ['Kompakta rader', 'Tätare rader'],
+                autoFill: ['Fyll i automatiskt', 'Börja svara direkt när panelen öppnas'],
+                inlineDefault: ['Etiketter vid start', 'Visa svaren på spelplanen från början'],
+                autoRefresh: ['Uppdatera automatiskt', 'Läs om svaren när spelplanen ändras'],
+                delay: ['Fördröjning (ms)', 'Väntetid mellan svaren'],
+                jitter: ['Slumpmässig extra tid (ms)', 'Lägger till upp till så mycket slumpad tid per steg'],
+                autoAdvance: ['Gå vidare automatiskt', 'Tryck Nästa efter varje svar'],
+                clozeTypeChars: ['Skriv bokstav för bokstav', 'Skriv varje svar en tangent i taget'],
+                clozeSkipFilled: ['Hoppa över ifyllda', 'Lämna rutor som redan har text'],
+                mcPause: ['Paus före klick (ms)', 'Vänta innan ett svar väljs'],
+                mcHideWrong: ['Tona ned fel svar', 'Med etiketter på tonas fel knappar ned'],
+                autoCheck: ['Rätta automatiskt', 'Tryck Rätta efter skrivandet'],
+                typeChars: ['Skriv bokstav för bokstav', 'En tangent i taget'],
+                typeSpeed: ['Skrivhastighet (ms/tangent)', 'Genomsnittlig tid per tangent'],
+                freeUseAlt: ['Föredra alternativ', 'Skriv den alternativa stavningen när den finns'],
+                memFlipGap: ['Tid mellan korten (ms)', 'Tid mellan att de två korten vänds'],
+                memPairDelay: ['Paus efter par (ms)', 'Tid innan nästa par vänds'],
+                memOrder: ['Parordning', 'Ordning som paren vänds i'],
+                gridColor: ['Markeringsfärg', 'Färg som markerar orden på brädet'],
+                gridStepDelay: ['Draghastighet (ms/bokstav)', 'Tid per bokstav när ett ord markeras'],
+                gridOrder: ['Ordföljd', 'Ordning som orden markeras i'],
+                gridShowPath: ['Visa ordens väg', 'Med etiketter på markeras varje ord på brädet'],
+            },
+            opt: {
+                off: 'Av', board: 'Brädets ordning', random: 'Slumpad', list: 'Listans ordning',
+                longest: 'Längst först', shortest: 'Kortast först',
+                blue: 'Blå', orange: 'Orange', green: 'Grön', purple: 'Lila', red: 'Röd',
+                cyan: 'Cyan', pink: 'Rosa', yellow: 'Gul',
+            },
+        },
+    };
+    const T = () => ({ ...(STRINGS[cfg.lang] || STRINGS.en), ...(EXTRA[cfg.lang] || EXTRA.en) });
+
+    const SCHEMA = [
+        ['general', [
+            ['lang', 'select', ['en', 'sv']],
+            ['hotkey', 'select', ['F2', 'F4', 'F8', 'F9', 'off']],
+            ['startMinimized', 'bool'],
+            ['rememberPos', 'bool'],
+            ['width', 'num', 260, 640, 10],
+            ['opacity', 'num', 30, 100, 5],
+        ]],
+        ['appearance', [
+            ['accent', 'select', ['blue', 'orange', 'green', 'purple', 'red']],
+            ['badgeColor', 'select', ['orange', 'cyan', 'green', 'pink']],
+            ['fontSize', 'num', 10, 16, 1],
+            ['compact', 'bool'],
+        ]],
+        ['behaviour', [
+            ['autoFill', 'bool'],
+            ['inlineDefault', 'bool'],
+            ['autoRefresh', 'bool'],
+            ['autoAdvance', 'bool'],
+            ['delay', 'num', 0, 10000, 50],
+            ['jitter', 'num', 0, 5000, 50],
+        ]],
+        ['cloze', [
+            ['clozeTypeChars', 'bool'],
+            ['clozeSkipFilled', 'bool'],
+        ]],
+        ['mc', [
+            ['mcPause', 'num', 0, 5000, 50],
+            ['mcHideWrong', 'bool'],
+        ]],
+        ['free', [
+            ['autoCheck', 'bool'],
+            ['typeChars', 'bool'],
+            ['typeSpeed', 'num', 10, 1000, 10],
+            ['freeUseAlt', 'bool'],
+        ]],
+        ['memory', [
+            ['memFlipGap', 'num', 0, 3000, 50],
+            ['memPairDelay', 'num', 0, 10000, 100],
+            ['memOrder', 'select', ['board', 'random']],
+        ]],
+        ['grid', [
+            ['gridColor', 'select', ['yellow', 'cyan', 'green', 'pink']],
+            ['gridStepDelay', 'num', 0, 500, 10],
+            ['gridOrder', 'select', ['list', 'longest', 'shortest', 'random']],
+            ['gridShowPath', 'bool'],
+        ]],
+    ];
+
+    const ACCENTS = {
+        blue: ['#0070e0', '#1a8cff'], orange: ['#d9730d', '#f08c2a'], green: ['#2e8b3e', '#3fae52'],
+        purple: ['#7b4fd6', '#9466f0'], red: ['#c4312b', '#e0463f'],
+    };
+    const BADGES = { orange: '#e5a50a', cyan: '#26bbff', green: '#4caf50', pink: '#ff5fa2' };
+    const GRID = { yellow: 'rgba(255,214,0,.55)', cyan: 'rgba(38,187,255,.5)', green: 'rgba(76,175,80,.5)', pink: 'rgba(255,95,162,.5)' };
+    const stepDelay = () => cfg.delay + Math.random() * cfg.jitter;
+    const shuffle = (a) => a.map((v) => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map((x) => x[1]);
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const decode = (b64) => {
@@ -116,9 +297,9 @@
     const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
     const key = (el, type, k) => el.dispatchEvent(new KeyboardEvent(type, { key: k, bubbles: true }));
 
-    const typeInto = async (input, text) => {
+    const typeInto = async (input, text, chars = cfg.typeChars) => {
         input.focus();
-        if (!cfg.typeChars) {
+        if (!chars) {
             nativeSetter.call(input, text);
             fire(input, 'input');
             key(input, 'keyup', text.slice(-1) || 'a');
@@ -132,7 +313,7 @@
             nativeSetter.call(input, input.value + ch);
             fire(input, 'input');
             key(input, 'keyup', ch);
-            await sleep(60 + Math.random() * 90);
+            await sleep(cfg.typeSpeed * (0.6 + Math.random() * 0.8));
         }
         fire(input, 'change');
     };
@@ -158,7 +339,7 @@
                 isDone: () => !!chosen?.value,
                 fill: async () => {
                     if (!visible(row) || chosen?.value) return false;
-                    await typeInto(input, answer);
+                    await typeInto(input, cfg.freeUseAlt && alts[0] ? alts[0] : answer);
                     if (cfg.autoCheck && check) {
                         await waitFor(() => !check.disabled, 2000);
                         await sleep(150);
@@ -202,12 +383,91 @@
                 fill: async () => {
                     if (gone(a) && gone(b)) return false;
                     a.click();
-                    await sleep(250);
+                    await sleep(cfg.memFlipGap);
                     b.click();
-                    await sleep(cfg.delay + 400);
+                    await sleep(cfg.memPairDelay + Math.random() * cfg.jitter);
                     return true;
                 },
             }));
+    };
+
+    const detectGrid = () => {
+        const board = document.getElementById('puzzle-board');
+        const lis = [...document.querySelectorAll('#wordlist li')];
+        if (!board || !lis.length) return null;
+        const cells = [...board.querySelectorAll('.cell')];
+        const size = Math.round(Math.sqrt(cells.length));
+        const letter = (el) => el.textContent.trim().toUpperCase();
+        const at = (r, c) => (r >= 0 && c >= 0 && r < size && c < size ? cells[r * size + c] : null);
+        const DIRS = [[0, 1, '→'], [1, 0, '↓'], [1, 1, '↘'], [-1, 1, '↗'], [0, -1, '←'], [-1, 0, '↑'], [-1, -1, '↖'], [1, -1, '↙']];
+        const find = (word) => {
+            const w = [...word];
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    for (const [dr, dc, arrow] of DIRS) {
+                        const path = [];
+                        for (let k = 0; k < w.length; k++) {
+                            const el = at(r + dr * k, c + dc * k);
+                            if (!el || letter(el) !== w[k]) break;
+                            path.push(el);
+                        }
+                        if (path.length === w.length) return { path, r, c, arrow };
+                    }
+                }
+            }
+            return null;
+        };
+        const pt = (el) => {
+            const b = el.getBoundingClientRect();
+            return { clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, bubbles: true, cancelable: true, view: window, buttons: 1 };
+        };
+        const ev = (el, type, Ctor = MouseEvent) => el.dispatchEvent(new Ctor(type, pt(el)));
+        return lis.map((li, i) => {
+            const word = li.textContent.trim().toUpperCase();
+            const hit = find(word);
+            const path = hit?.path || null;
+            const isDone = () =>
+                li.className.trim() !== '' ||
+                getComputedStyle(li).textDecorationLine.includes('line-through') ||
+                +getComputedStyle(li).opacity < 1 ||
+                (!!path && path.every((el) => /found|marked|done|solved|correct/.test(el.className)));
+            return {
+                n: i,
+                problem: word,
+                answer: hit ? `R${hit.r + 1} K${hit.c + 1} ${hit.arrow}` : T().notOnBoard,
+                path,
+                stepped: true,
+                noNext: true,
+                isCurrent: () => true,
+                isDone,
+                fill: async () => {
+                    if (!path || isDone()) return false;
+                    const first = path[0], last = path[path.length - 1];
+                    ev(first, 'pointerdown', PointerEvent);
+                    ev(first, 'mousedown');
+                    for (const el of path) {
+                        ev(el, 'pointerover', PointerEvent);
+                        ev(el, 'pointermove', PointerEvent);
+                        ev(el, 'mouseover');
+                        ev(el, 'mouseenter');
+                        ev(el, 'mousemove');
+                        await sleep(cfg.gridStepDelay);
+                    }
+                    ev(last, 'pointerup', PointerEvent);
+                    ev(last, 'mouseup');
+                    document.dispatchEvent(new MouseEvent('mouseup', pt(last)));
+                    await sleep(300);
+                    if (isDone()) return true;
+                    first.click();
+                    await sleep(cfg.gridStepDelay * 2 + 50);
+                    last.click();
+                    await sleep(300);
+                    if (isDone()) return true;
+                    for (const el of path) { el.click(); await sleep(cfg.gridStepDelay + 30); }
+                    return true;
+                },
+            };
+        });
     };
 
     const detectCloze = () => {
@@ -227,8 +487,10 @@
                 hookInput: input,
                 isCurrent: () => true,
                 isDone: () => !!input && input.value === answer,
-                fill: () => {
+                fill: async () => {
                     if (!input) return;
+                    if (cfg.clozeSkipFilled && input.value !== '') return;
+                    if (cfg.clozeTypeChars) { await typeInto(input, answer, true); return; }
                     input.value = answer;
                     fire(input, 'input');
                     fire(input, 'change');
@@ -249,12 +511,14 @@
                 problem: card?.textContent.trim() || null,
                 answer: right?.textContent.trim() ?? '?',
                 anchor: right?.closest('.btn') || right,
+                row,
                 highlight: true,
                 stepped: true,
                 isCurrent: () => visible(row),
                 isDone: () => !!chosen?.value,
-                fill: () => {
+                fill: async () => {
                     if (!right || !visible(row) || chosen?.value) return false;
+                    if (cfg.mcPause) await sleep(cfg.mcPause);
                     (right.closest('.clickable') || right).click();
                     return true;
                 },
@@ -263,6 +527,7 @@
     };
 
     const DETECTORS = [
+        { key: 'grid', name: () => T().modeGrid, run: detectGrid },
         { key: 'memory', name: () => T().modeMemory, run: detectMemory },
         { key: 'free', name: () => T().modeFree, run: detectFree },
         { key: 'mc', name: () => T().modeMC, run: detectMultipleChoice },
@@ -278,7 +543,16 @@
         mode = null;
         return [];
     };
-    const stepped = () => mode?.key === 'mc' || mode?.key === 'free' || mode?.key === 'memory';
+    const stepped = () => ['mc', 'free', 'memory', 'grid'].includes(mode?.key);
+    const orderList = () => {
+        if (mode?.key === 'memory' && cfg.memOrder === 'random') return shuffle(items);
+        if (mode?.key === 'grid') {
+            if (cfg.gridOrder === 'random') return shuffle(items);
+            if (cfg.gridOrder === 'longest') return [...items].sort((a, b) => b.problem.length - a.problem.length);
+            if (cfg.gridOrder === 'shortest') return [...items].sort((a, b) => a.problem.length - b.problem.length);
+        }
+        return items;
+    };
 
     const css = `
         #${ID}{
@@ -376,11 +650,20 @@
         #${ID} .sb .r{margin-left:auto}
         #${ID}.min .page,#${ID}.min .sb{display:none !important}
         .es-answer{display:inline-block; margin-left:6px; padding:1px 6px; border-radius:2px;
-            background:#151515; color:#e5a50a; border:1px solid #000;
+            background:#151515; color:var(--es-badge, #e5a50a); border:1px solid #000;
             font:600 12px Consolas,monospace; vertical-align:middle; box-shadow:0 1px 3px rgba(0,0,0,.4)}
+        #${ID} .cr{height:18px; display:flex; align-items:center; justify-content:center; background:#0a0a0a;
+            color:#555; font-size:9.5px; letter-spacing:.3px; border-top:1px solid var(--line)}
+        #${ID}.min .cr{display:none}
+        #${ID}.compact .row{min-height:22px}
+        #${ID}.compact .row .v{padding:1px 6px}
+        #${ID}.compact .num,#${ID}.compact .sel,#${ID}.compact .inp{height:18px}
+        #${ID}.compact .cat{height:22px}
+        .es-cell{background:var(--es-grid, rgba(255,214,0,.55)) !important; box-shadow:inset 0 0 0 2px rgba(0,0,0,.35)}
+        .es-dim{opacity:.3 !important}
         .es-pair{position:absolute; top:4px; left:4px; margin:0; z-index:5; pointer-events:none}
         .card{position:relative}
-        .es-correct{outline:3px solid #e5a50a !important; outline-offset:2px; box-shadow:0 0 12px rgba(229,165,10,.6) !important}
+        .es-correct{outline:3px solid var(--es-badge, #e5a50a) !important; outline-offset:2px; box-shadow:0 0 12px rgba(229,165,10,.6) !important}
     `;
 
     const ICON_DETAILS = '<svg viewBox="0 0 16 16"><path d="M2 2h12v2H2zm0 5h12v2H2zm0 5h8v2H2z"/></svg>';
@@ -432,9 +715,13 @@
     const renderLabels = () => {
         document.querySelectorAll('.es-answer').forEach((el) => el.remove());
         document.querySelectorAll('.es-correct').forEach((el) => el.classList.remove('es-correct'));
+        document.querySelectorAll('.es-cell').forEach((el) => el.classList.remove('es-cell'));
+        document.querySelectorAll('.es-dim').forEach((el) => el.classList.remove('es-dim'));
         if (!labelsOn) return;
         items.forEach((it) => {
-            if (it.cards) {
+            if (it.path !== undefined) {
+                if (cfg.gridShowPath) it.path?.forEach((el) => el.classList.add('es-cell'));
+            } else if (it.cards) {
                 it.cards.forEach((c) => {
                     const tag = document.createElement('span');
                     tag.className = 'es-answer es-pair';
@@ -443,6 +730,11 @@
                 });
             } else if (it.highlight) {
                 it.anchor?.classList.add('es-correct');
+                if (cfg.mcHideWrong) {
+                    it.row?.querySelectorAll('.multipleChoices .btn').forEach((b) => {
+                        if (b !== it.anchor) b.classList.add('es-dim');
+                    });
+                }
             } else {
                 const tag = document.createElement('span');
                 tag.className = 'es-answer';
@@ -470,7 +762,7 @@
     const advance = async (it) => {
         if (!cfg.autoAdvance || it.n >= items.length - 1) return;
         await waitFor(() => it.isDone(), 3000);
-        await sleep(cfg.delay);
+        await sleep(stepDelay());
         await waitFor(clickNext, 3000);
         await sleep(Math.max(150, cfg.delay / 2));
     };
@@ -478,8 +770,9 @@
     const runSteps = async () => {
         setBusy(true);
         try {
-            for (let i = 0; i < items.length; i++) {
-                const it = items[i];
+            const list = orderList();
+            for (let i = 0; i < list.length; i++) {
+                const it = list[i];
                 if (it.isDone()) continue;
                 if (!(await waitFor(() => it.isCurrent(), 4000))) break;
                 setStatus(() => T().answering(i + 1, items.length));
@@ -520,6 +813,19 @@
     const fillAll = () => {
         if (busy) return;
         if (stepped()) { runSteps(); return; }
+        if (cfg.clozeTypeChars) {
+            (async () => {
+                setBusy(true);
+                try {
+                    for (const it of items) { await it.fill(); markFilled(); }
+                } finally {
+                    setBusy(false);
+                    const n = items.length;
+                    setStatus(() => T().filled(n));
+                }
+            })();
+            return;
+        }
         items.forEach((it) => it.fill());
         markFilled();
         const n = items.length;
@@ -550,26 +856,47 @@
 
     const chk = (k) => `<div class="chk${cfg[k] ? ' on' : ''}" data-key="${k}"></div>`;
 
+    const optLabel = (k, v) => (k === 'lang' ? { en: 'English', sv: 'Svenska' }[v] : T().opt[v] || v);
+
+    const control = ([k, type, a, b, step]) => {
+        if (type === 'bool') return chk(k);
+        if (type === 'select') {
+            return `<select class="sel" data-key="${k}">` +
+                a.map((v) => `<option value="${v}"${cfg[k] === v ? ' selected' : ''}>${esc(optLabel(k, v))}</option>`).join('') +
+                '</select>';
+        }
+        return `<input class="inp" type="number" data-key="${k}" min="${a}" max="${b}" step="${step}" value="${+cfg[k]}">`;
+    };
+
     const settingsBody = () => {
         const t = T();
-        return catHtml('general', t.general) +
-            `<div class="rows${collapsed.general ? ' closed' : ''}" data-rows="general">` +
-            settingRow(t.language, t.languageTip,
-                `<select class="sel lang">
-                    <option value="en"${cfg.lang === 'en' ? ' selected' : ''}>English</option>
-                    <option value="sv"${cfg.lang === 'sv' ? ' selected' : ''}>Svenska</option>
-                </select>`) +
-            '</div>' +
-            catHtml('behaviour', t.behaviour) +
-            `<div class="rows${collapsed.behaviour ? ' closed' : ''}" data-rows="behaviour">` +
-            settingRow(t.autoFill, t.autoFillTip, chk('autoFill')) +
-            settingRow(t.inlineDefault, t.inlineDefaultTip, chk('inlineDefault')) +
-            settingRow(t.autoRefresh, t.autoRefreshTip, chk('autoRefresh')) +
-            settingRow(t.autoAdvance, t.autoAdvanceTip, chk('autoAdvance')) +
-            settingRow(t.autoCheck, t.autoCheckTip, chk('autoCheck')) +
-            settingRow(t.typeChars, t.typeCharsTip, chk('typeChars')) +
-            settingRow(t.delay, t.delayTip, `<input class="inp delay" type="number" min="0" step="50" value="${+cfg.delay}">`) +
-            '</div>';
+        return SCHEMA.map(([cat, rows]) =>
+            catHtml(cat, t.cats[cat], mode?.key === cat ? `<span class="cnt">●</span>` : '') +
+            `<div class="rows${collapsed[cat] ? ' closed' : ''}" data-rows="${cat}">` +
+            rows.map((r) => settingRow(t.set[r[0]][0], t.set[r[0]][1], control(r))).join('') +
+            '</div>'
+        ).join('');
+    };
+
+    const applyLook = () => {
+        const [a, ah] = ACCENTS[cfg.accent] || ACCENTS.blue;
+        panel.style.setProperty('--accent', a);
+        panel.style.setProperty('--accent-hi', ah);
+        panel.style.width = cfg.width + 'px';
+        panel.style.opacity = cfg.opacity / 100;
+        panel.style.fontSize = cfg.fontSize + 'px';
+        panel.classList.toggle('compact', !!cfg.compact);
+        document.documentElement.style.setProperty('--es-badge', BADGES[cfg.badgeColor] || BADGES.orange);
+        document.documentElement.style.setProperty('--es-grid', GRID[cfg.gridColor] || GRID.yellow);
+    };
+
+    const afterChange = (k) => {
+        save();
+        if (k === 'autoRefresh') toggleObserver();
+        if (k === 'lang' || k === 'memOrder' || k === 'gridOrder') { build(); }
+        if (['mcHideWrong', 'gridShowPath', 'gridColor', 'badgeColor'].includes(k)) renderLabels();
+        applyLook();
+        setStatus(() => T().saved);
     };
 
     const build = () => {
@@ -601,10 +928,12 @@
                 <div class="bd">${settingsBody()}</div>
                 <div class="ft"><button class="reset">${ICON_RESET}${esc(t.reset)}</button></div>
             </div>
-            <div class="sb"><span class="led${busy ? ' busy' : ''}"></span><span class="st"></span><span class="r"></span></div>`;
+            <div class="sb"><span class="led${busy ? ' busy' : ''}"></span><span class="st"></span><span class="r"></span></div>
+            <div class="cr">${esc(t.copyright)}</div>`;
 
         $('.srch').value = q;
         wire();
+        applyLook();
         markFilled();
         applySearch();
         setStatus(statusMsg || (() => T().ready));
@@ -628,6 +957,8 @@
             document.querySelectorAll('.es-correct').forEach((el) => el.classList.remove('es-correct'));
             observer.disconnect();
             clearInterval(window.__esAnswerPoll);
+            removeEventListener('keydown', onHotkey, true);
+            document.querySelectorAll('.es-cell, .es-dim').forEach((el) => el.classList.remove('es-cell', 'es-dim'));
         };
 
         panel.querySelectorAll('.cat').forEach((el) => {
@@ -663,30 +994,30 @@
         };
         $('.ref').onclick = () => { refreshData(); setStatus(() => T().refreshed); };
 
-        $('.lang').onchange = (e) => {
-            cfg.lang = e.target.value;
-            save();
-            setStatus(() => T().saved);
-            build();
-        };
-        panel.querySelectorAll('.chk').forEach((el) => {
+        panel.querySelectorAll('.page.settings .chk').forEach((el) => {
             el.onclick = () => {
                 const k = el.dataset.key;
                 cfg[k] = !cfg[k];
                 el.classList.toggle('on', cfg[k]);
-                save();
-                if (k === 'autoRefresh') toggleObserver();
-                setStatus(() => T().saved);
+                afterChange(k);
             };
         });
-        const delay = $('.delay');
-        delay.addEventListener('keydown', (e) => e.stopPropagation());
-        delay.onchange = () => {
-            cfg.delay = Math.max(0, Math.min(10000, parseInt(delay.value, 10) || 0));
-            delay.value = cfg.delay;
-            save();
-            setStatus(() => T().saved);
-        };
+        panel.querySelectorAll('.page.settings select.sel').forEach((el) => {
+            el.onchange = () => {
+                cfg[el.dataset.key] = el.value;
+                afterChange(el.dataset.key);
+            };
+        });
+        panel.querySelectorAll('.page.settings input.inp').forEach((el) => {
+            el.addEventListener('keydown', (e) => e.stopPropagation());
+            el.onchange = () => {
+                const lo = +el.min, hi = +el.max;
+                const v = Math.max(lo, Math.min(hi, parseInt(el.value, 10) || 0));
+                el.value = v;
+                cfg[el.dataset.key] = v;
+                afterChange(el.dataset.key);
+            };
+        });
         $('.reset').onclick = () => {
             cfg = { ...DEFAULTS };
             save();
@@ -705,7 +1036,14 @@
                 panel.style.top = Math.min(innerHeight - 28, Math.max(0, ev.clientY - dy)) + 'px';
                 panel.style.right = 'auto';
             };
-            const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); };
+            const up = () => {
+                removeEventListener('mousemove', move);
+                removeEventListener('mouseup', up);
+                if (cfg.rememberPos) {
+                    cfg.pos = { left: panel.style.left, top: panel.style.top };
+                    save();
+                }
+            };
             addEventListener('mousemove', move);
             addEventListener('mouseup', up);
         });
@@ -740,6 +1078,21 @@
     window.__esAnswerPoll = setInterval(() => {
         if (document.getElementById(ID)) markFilled();
     }, 500);
+
+    const onHotkey = (e) => {
+        if (cfg.hotkey === 'off' || e.key !== cfg.hotkey) return;
+        e.preventDefault();
+        panel.style.display = panel.style.display === 'none' ? '' : 'none';
+    };
+    window.__esHotkey = onHotkey;
+    addEventListener('keydown', onHotkey, true);
+
+    if (cfg.rememberPos && cfg.pos?.left) {
+        panel.style.left = cfg.pos.left;
+        panel.style.top = cfg.pos.top;
+        panel.style.right = 'auto';
+    }
+    if (cfg.startMinimized) panel.classList.add('min');
 
     refreshData();
     lastSig = signature();
