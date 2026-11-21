@@ -15,3 +15,10 @@ In the top bar (might not look identical to mine) press "Console"
 Then copy the code from "showAnswers.js" and paste it into there, then press enter.
 
 ![Current Look](Docs/CheatMenu.png)
+---
+
+## Supported game modes
+
+- Multiple choice
+- Written answers
+- 

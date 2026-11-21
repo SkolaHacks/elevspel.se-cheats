@@ -6,7 +6,6 @@
 // This is apart of the elevspel.se-cheats repository
 // Author: @Nipfswd
 //
-
 (() => {
     const ID = 'es-answer-panel';
     const STORE = 'es-answer-panel-settings';
@@ -15,7 +14,6 @@
     document.querySelectorAll('.es-correct').forEach((el) => el.classList.remove('es-correct'));
     clearInterval(window.__esAnswerPoll);
 
-    // ---- localization ---------------------------------------------------
     const STRINGS = {
         en: {
             details: 'Details', settings: 'Settings',
@@ -28,16 +26,18 @@
             set: (n, a) => `Set [${n}] = ${a}`, filled: (n) => `Filled ${n} fields`,
             filledCount: (d, t) => `${d} / ${t} done`,
             inlineOn: 'Inline labels on', inlineOff: 'Inline labels off',
-            mode: 'Mode', modeCloze: 'Fill in', modeMC: 'Multiple choice', modeNone: 'None',
+            mode: 'Mode', modeCloze: 'Fill in', modeMC: 'Multiple choice', modeFree: 'Free input', modeNone: 'None',
             answering: (n, t) => `Answering ${n} / ${t}…`,
-            doneMC: 'Done. Press Next to finish.', notCurrent: 'Go to that question first',
+            doneSteps: 'Done. Press Next to finish.', notCurrent: 'Go to that question first',
             general: 'General', behaviour: 'Behaviour',
             language: 'Language', languageTip: 'Language of the panel',
             autoFill: 'Auto-fill on load', autoFillTip: 'Fill every box as soon as the panel opens',
             inlineDefault: 'Inline labels on load', inlineDefaultTip: 'Show answer badges next to the boxes at start',
             autoRefresh: 'Auto-refresh', autoRefreshTip: 'Re-read answers when the board changes',
-            autoAdvance: 'Auto-advance', autoAdvanceTip: 'Multiple choice: press Next after answering',
-            delay: 'Step delay (ms)', delayTip: 'Multiple choice: wait between answers',
+            autoAdvance: 'Auto-advance', autoAdvanceTip: 'Step-by-step games: press Next after answering',
+            autoCheck: 'Auto-check', autoCheckTip: 'Free input: press Check after typing',
+            typeChars: 'Type letter by letter', typeCharsTip: 'Free input: type one key at a time',
+            delay: 'Step delay (ms)', delayTip: 'Step-by-step games: wait between answers',
             reset: 'Reset to Defaults', saved: 'Settings saved', resetDone: 'Settings reset',
         },
         sv: {
@@ -51,16 +51,18 @@
             set: (n, a) => `Satte [${n}] = ${a}`, filled: (n) => `Fyllde i ${n} rutor`,
             filledCount: (d, t) => `${d} / ${t} klara`,
             inlineOn: 'Etiketter vid rutor på', inlineOff: 'Etiketter vid rutor av',
-            mode: 'Läge', modeCloze: 'Fyll i', modeMC: 'Flerval', modeNone: 'Inget',
+            mode: 'Läge', modeCloze: 'Fyll i', modeMC: 'Flerval', modeFree: 'Skriv själv', modeNone: 'Inget',
             answering: (n, t) => `Svarar ${n} / ${t}…`,
-            doneMC: 'Klart. Tryck Nästa för att avsluta.', notCurrent: 'Gå till den frågan först',
+            doneSteps: 'Klart. Tryck Nästa för att avsluta.', notCurrent: 'Gå till den frågan först',
             general: 'Allmänt', behaviour: 'Beteende',
             language: 'Språk', languageTip: 'Panelens språk',
             autoFill: 'Fyll i automatiskt', autoFillTip: 'Fyll i alla rutor direkt när panelen öppnas',
             inlineDefault: 'Etiketter vid start', inlineDefaultTip: 'Visa svarsmärken vid rutorna från början',
             autoRefresh: 'Uppdatera automatiskt', autoRefreshTip: 'Läs om svaren när spelplanen ändras',
-            autoAdvance: 'Gå vidare automatiskt', autoAdvanceTip: 'Flerval: tryck Nästa efter varje svar',
-            delay: 'Fördröjning (ms)', delayTip: 'Flerval: väntetid mellan svaren',
+            autoAdvance: 'Gå vidare automatiskt', autoAdvanceTip: 'Steg-för-steg-spel: tryck Nästa efter varje svar',
+            autoCheck: 'Rätta automatiskt', autoCheckTip: 'Skriv själv: tryck Rätta efter skrivandet',
+            typeChars: 'Skriv bokstav för bokstav', typeCharsTip: 'Skriv själv: en tangent i taget',
+            delay: 'Fördröjning (ms)', delayTip: 'Steg-för-steg-spel: väntetid mellan svaren',
             reset: 'Återställ standard', saved: 'Inställningar sparade', resetDone: 'Inställningar återställda',
         },
     };
@@ -71,6 +73,8 @@
         inlineDefault: false,
         autoRefresh: true,
         autoAdvance: true,
+        autoCheck: true,
+        typeChars: false,
         delay: 600,
     };
 
@@ -79,15 +83,15 @@
         catch { return { ...DEFAULTS }; }
     };
     const save = () => {
-        try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch { /* storage blocked */ }
+        try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch {}
     };
 
     let cfg = load();
     const T = () => STRINGS[cfg.lang] || STRINGS.en;
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // ---- helpers --------------------------------------------------------
     const decode = (b64) => {
+        if (!b64) return '';
         try {
             return decodeURIComponent(escape(atob(b64)));
         } catch {
@@ -97,9 +101,72 @@
     const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const visible = (el) => !!el && getComputedStyle(el).display !== 'none' && el.offsetParent !== null;
 
-    // ---- game mode detectors --------------------------------------------
-    // Each detector returns null (not this mode) or a list of items:
-    //   { n, problem, answer, anchor, fill(), isDone(), isCurrent() }
+    const waitFor = async (fn, timeout = 3000) => {
+        const end = Date.now() + timeout;
+        while (Date.now() < end) {
+            if (fn()) return true;
+            await sleep(80);
+        }
+        return false;
+    };
+
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
+    const key = (el, type, k) => el.dispatchEvent(new KeyboardEvent(type, { key: k, bubbles: true }));
+
+    const typeInto = async (input, text) => {
+        input.focus();
+        if (!cfg.typeChars) {
+            nativeSetter.call(input, text);
+            fire(input, 'input');
+            key(input, 'keyup', text.slice(-1) || 'a');
+            fire(input, 'change');
+            return;
+        }
+        nativeSetter.call(input, '');
+        fire(input, 'input');
+        for (const ch of text) {
+            key(input, 'keydown', ch);
+            nativeSetter.call(input, input.value + ch);
+            fire(input, 'input');
+            key(input, 'keyup', ch);
+            await sleep(60 + Math.random() * 90);
+        }
+        fire(input, 'change');
+    };
+
+    const detectFree = () => {
+        const rows = [...document.querySelectorAll('.qrow')].filter((r) => r.querySelector('input.spelledinput'));
+        if (!rows.length) return null;
+        return rows.map((row, i) => {
+            const input = row.querySelector('input.spelledinput');
+            const chosen = row.querySelector('input[name="chosen[]"]');
+            const check = row.querySelector('.checkAnswer');
+            const card = row.querySelector('.questionCard');
+            const answer = decode(input.dataset.correct || row.querySelector('input[name="correct[]"]')?.value);
+            const alts = [decode(input.dataset.ca1), decode(input.dataset.ca2)].filter(Boolean);
+            return {
+                n: i,
+                problem: card?.textContent.trim() || null,
+                answer: alts.length ? `${answer} / ${alts.join(' / ')}` : answer,
+                typed: answer,
+                anchor: input,
+                stepped: true,
+                isCurrent: () => visible(row),
+                isDone: () => !!chosen?.value,
+                fill: async () => {
+                    if (!visible(row) || chosen?.value) return false;
+                    await typeInto(input, answer);
+                    if (cfg.autoCheck && check) {
+                        await waitFor(() => !check.disabled, 2000);
+                        await sleep(150);
+                        check.click();
+                    }
+                    return true;
+                },
+            };
+        });
+    };
 
     const detectCloze = () => {
         const hidden = [...document.querySelectorAll('input[name="correct[]"]')];
@@ -115,22 +182,21 @@
                 problem: left != null ? `${left} · ${right}` : null,
                 answer,
                 anchor: h,
+                hookInput: input,
                 isCurrent: () => true,
                 isDone: () => !!input && input.value === answer,
                 fill: () => {
                     if (!input) return;
                     input.value = answer;
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    fire(input, 'input');
+                    fire(input, 'change');
                 },
-                hookInput: input,
             };
         });
     };
 
     const detectMultipleChoice = () => {
-        const rows = [...document.querySelectorAll('form#response .qrow, .qrow')]
-            .filter((r) => r.querySelector('.choice[data-indexval]'));
+        const rows = [...document.querySelectorAll('.qrow')].filter((r) => r.querySelector('.choice[data-indexval]'));
         if (!rows.length) return null;
         return rows.map((row, i) => {
             const right = row.querySelector('.choice[data-indexval="1"]');
@@ -141,7 +207,8 @@
                 problem: card?.textContent.trim() || null,
                 answer: right?.textContent.trim() ?? '?',
                 anchor: right?.closest('.btn') || right,
-                choice: right,
+                highlight: true,
+                stepped: true,
                 isCurrent: () => visible(row),
                 isDone: () => !!chosen?.value,
                 fill: () => {
@@ -154,8 +221,9 @@
     };
 
     const DETECTORS = [
-        { key: 'cloze', name: () => T().modeCloze, run: detectCloze },
+        { key: 'free', name: () => T().modeFree, run: detectFree },
         { key: 'mc', name: () => T().modeMC, run: detectMultipleChoice },
+        { key: 'cloze', name: () => T().modeCloze, run: detectCloze },
     ];
 
     let mode = null;
@@ -167,8 +235,8 @@
         mode = null;
         return [];
     };
+    const stepped = () => mode?.key === 'mc' || mode?.key === 'free';
 
-    // ---- styles: Unreal Editor 5 dark theme -----------------------------
     const css = `
         #${ID}{
             --bg0:#0f0f0f; --bg1:#151515; --bg2:#1a1a1a; --bg3:#242424; --bg4:#2f2f2f;
@@ -182,8 +250,6 @@
             user-select:none;
         }
         #${ID} *{box-sizing:border-box}
-
-        /* window title bar with tabs */
         #${ID} .tb{display:flex; align-items:stretch; height:28px; background:var(--bg0);
             padding:0 4px 0 0; cursor:move; border-bottom:1px solid var(--line)}
         #${ID} .tab{display:flex; align-items:center; gap:6px; padding:0 12px; cursor:pointer;
@@ -197,11 +263,8 @@
             color:var(--txt-dim); cursor:pointer; border-radius:2px; font-size:14px}
         #${ID} .wb:hover{background:var(--bg4); color:var(--hi)}
         #${ID} .wb.x:hover{background:#c42b1c; color:#fff}
-
         #${ID} .page{display:none}
         #${ID} .page.act{display:block}
-
-        /* toolbar */
         #${ID} .tools{display:flex; gap:6px; align-items:center; padding:6px; background:var(--bg2); border-bottom:1px solid var(--line)}
         #${ID} .srch{flex:1; min-width:0; height:24px; background:var(--bg0); border:1px solid #383838; border-radius:12px;
             color:var(--txt); padding:0 10px 0 24px; font:inherit; outline:none;
@@ -212,16 +275,12 @@
             background:var(--bg0); border:1px solid #383838; color:var(--sel); font-size:10.5px;
             text-transform:uppercase; letter-spacing:.5px; font-weight:700}
         #${ID} .mode.none{color:var(--txt-dim)}
-
-        /* category header */
         #${ID} .cat{display:flex; align-items:center; gap:6px; height:26px; padding:0 8px;
             background:var(--bg3); color:var(--hi); font-weight:700; text-transform:uppercase;
             font-size:11px; letter-spacing:.6px; cursor:pointer; border-bottom:1px solid var(--line)}
         #${ID} .cat .arr{display:inline-block; transition:transform .12s; color:var(--txt-dim); font-size:9px}
         #${ID} .cat.closed .arr{transform:rotate(-90deg)}
         #${ID} .cat .cnt{margin-left:auto; font-weight:400; color:var(--txt-dim); text-transform:none; letter-spacing:0}
-
-        /* property rows */
         #${ID} .bd{max-height:50vh; overflow:auto; background:var(--bg1)}
         #${ID} .bd::-webkit-scrollbar{width:8px}
         #${ID} .bd::-webkit-scrollbar-thumb{background:#3a3a3a; border-radius:4px}
@@ -244,8 +303,6 @@
         #${ID} .row.ok .num{color:var(--ok); border-color:#2d5a2f}
         #${ID} .row.ok .num .dot{background:var(--ok); box-shadow:0 0 4px var(--ok)}
         #${ID} .empty{padding:18px; color:var(--txt-dim); text-align:center; font-style:italic}
-
-        /* settings controls */
         #${ID} .sel,#${ID} .inp{width:100%; height:20px; background:var(--bg0); border:1px solid #383838; border-radius:2px;
             color:var(--txt); font:inherit; padding:0 4px; outline:none}
         #${ID} .sel{cursor:pointer}
@@ -258,8 +315,6 @@
         #${ID} .chk.on{background:var(--accent); border-color:var(--accent)}
         #${ID} .chk.on::after{content:''; width:4px; height:8px; border:solid #fff; border-width:0 2px 2px 0;
             transform:rotate(45deg) translate(-1px,-1px)}
-
-        /* footer buttons */
         #${ID} .ft{display:flex; gap:4px; padding:6px; background:var(--bg2); border-top:1px solid var(--line)}
         #${ID} button{flex:1; height:26px; border:1px solid #000; border-radius:3px; cursor:pointer;
             font:500 11px "Roboto","Segoe UI",sans-serif; color:var(--txt); background:var(--bg4);
@@ -271,16 +326,12 @@
         #${ID} button.pri:hover{background:var(--accent-hi)}
         #${ID} button.on{box-shadow:inset 0 -2px 0 var(--sel); color:var(--hi)}
         #${ID} button svg{width:11px; height:11px; fill:currentColor}
-
-        /* status bar */
         #${ID} .sb{height:20px; display:flex; align-items:center; gap:8px; padding:0 8px; background:var(--bg0);
             color:var(--txt-dim); font-size:10.5px; border-top:1px solid var(--line)}
         #${ID} .sb .led{width:7px; height:7px; border-radius:50%; background:var(--ok); box-shadow:0 0 5px var(--ok)}
         #${ID} .sb .led.busy{background:var(--warn); box-shadow:0 0 5px var(--warn)}
         #${ID} .sb .r{margin-left:auto}
-
         #${ID}.min .page,#${ID}.min .sb{display:none !important}
-
         .es-answer{display:inline-block; margin-left:6px; padding:1px 6px; border-radius:2px;
             background:#151515; color:#e5a50a; border:1px solid #000;
             font:600 12px Consolas,monospace; vertical-align:middle; box-shadow:0 1px 3px rgba(0,0,0,.4)}
@@ -294,7 +345,6 @@
     const ICON_REF = '<svg viewBox="0 0 16 16"><path d="M13.6 2.4A7.9 7.9 0 008 0a8 8 0 108 8h-2a6 6 0 11-1.8-4.2L9 7h7V0z"/></svg>';
     const ICON_RESET = '<svg viewBox="0 0 16 16"><path d="M2.4 2.4A7.9 7.9 0 018 0a8 8 0 11-8 8h2a6 6 0 101.8-4.2L7 7H0V0z"/></svg>';
 
-    // ---- panel shell ----------------------------------------------------
     const panel = document.createElement('div');
     panel.id = ID;
     document.body.appendChild(panel);
@@ -320,7 +370,6 @@
         if (f) f.disabled = b;
     };
 
-    // ---- answers logic --------------------------------------------------
     const markFilled = () => {
         let done = 0;
         panel.querySelectorAll('.page.details .row').forEach((row) => {
@@ -328,7 +377,7 @@
             if (!it) return;
             const ok = it.isDone();
             row.classList.toggle('ok', ok);
-            row.classList.toggle('cur', mode?.key === 'mc' && it.isCurrent());
+            row.classList.toggle('cur', stepped() && it.isCurrent());
             if (ok) done++;
         });
         const c = $('.sb .r');
@@ -340,7 +389,7 @@
         document.querySelectorAll('.es-correct').forEach((el) => el.classList.remove('es-correct'));
         if (!labelsOn) return;
         items.forEach((it) => {
-            if (mode?.key === 'mc') {
+            if (it.highlight) {
                 it.anchor?.classList.add('es-correct');
             } else {
                 const tag = document.createElement('span');
@@ -366,18 +415,15 @@
         return false;
     };
 
-    const waitFor = async (fn, timeout = 3000) => {
-        const end = Date.now() + timeout;
-        while (Date.now() < end) {
-            if (fn()) return true;
-            await sleep(80);
-        }
-        return false;
+    const advance = async (it) => {
+        if (!cfg.autoAdvance || it.n >= items.length - 1) return;
+        await waitFor(() => it.isDone(), 3000);
+        await sleep(cfg.delay);
+        await waitFor(clickNext, 3000);
+        await sleep(Math.max(150, cfg.delay / 2));
     };
 
-    // Multiple choice: answer the visible question, optionally press Next,
-    // and keep going until every question is answered.
-    const runMC = async () => {
+    const runSteps = async () => {
         setBusy(true);
         try {
             for (let i = 0; i < items.length; i++) {
@@ -385,31 +431,30 @@
                 if (it.isDone()) continue;
                 if (!(await waitFor(() => it.isCurrent(), 4000))) break;
                 setStatus(() => T().answering(i + 1, items.length));
-                it.fill();
+                await it.fill();
                 markFilled();
-                const isLast = i === items.length - 1;
-                if (!cfg.autoAdvance || isLast) break;
-                await sleep(cfg.delay);
-                await waitFor(clickNext, 3000);
-                await sleep(Math.max(150, cfg.delay / 2));
+                if (!cfg.autoAdvance || i === items.length - 1) break;
+                await advance(it);
             }
         } finally {
             setBusy(false);
             markFilled();
             const all = items.every((it) => it.isDone());
-            setStatus(() => (all ? T().doneMC : T().ready));
+            setStatus(() => (all ? T().doneSteps : T().ready));
         }
     };
 
     const fillOne = async (it) => {
-        if (mode?.key === 'mc') {
+        if (stepped()) {
             if (!it.isCurrent()) { setStatus(() => T().notCurrent); return; }
-            it.fill();
-            markFilled();
-            setStatus(() => T().set(it.n, it.answer));
-            if (cfg.autoAdvance && it.n < items.length - 1) {
-                await sleep(cfg.delay);
-                await waitFor(clickNext, 3000);
+            setBusy(true);
+            try {
+                await it.fill();
+                markFilled();
+                setStatus(() => T().set(it.n, it.answer));
+                await advance(it);
+            } finally {
+                setBusy(false);
                 setTimeout(markFilled, 300);
             }
             return;
@@ -421,14 +466,13 @@
 
     const fillAll = () => {
         if (busy) return;
-        if (mode?.key === 'mc') { runMC(); return; }
+        if (stepped()) { runSteps(); return; }
         items.forEach((it) => it.fill());
         markFilled();
         const n = items.length;
         setStatus(() => T().filled(n));
     };
 
-    // ---- page builders --------------------------------------------------
     const catHtml = (key, title, extra = '') =>
         `<div class="cat${collapsed[key] ? ' closed' : ''}" data-cat="${key}"><span class="arr">&#9660;</span>${esc(title)}${extra}</div>`;
 
@@ -451,7 +495,7 @@
             <div class="v">${control}</div>
         </div>`;
 
-    const chk = (key) => `<div class="chk${cfg[key] ? ' on' : ''}" data-key="${key}"></div>`;
+    const chk = (k) => `<div class="chk${cfg[k] ? ' on' : ''}" data-key="${k}"></div>`;
 
     const settingsBody = () => {
         const t = T();
@@ -469,11 +513,12 @@
             settingRow(t.inlineDefault, t.inlineDefaultTip, chk('inlineDefault')) +
             settingRow(t.autoRefresh, t.autoRefreshTip, chk('autoRefresh')) +
             settingRow(t.autoAdvance, t.autoAdvanceTip, chk('autoAdvance')) +
+            settingRow(t.autoCheck, t.autoCheckTip, chk('autoCheck')) +
+            settingRow(t.typeChars, t.typeCharsTip, chk('typeChars')) +
             settingRow(t.delay, t.delayTip, `<input class="inp delay" type="number" min="0" step="50" value="${+cfg.delay}">`) +
             '</div>';
     };
 
-    // ---- full render ----------------------------------------------------
     const build = () => {
         const t = T();
         const q = $('.srch')?.value || '';
@@ -487,7 +532,6 @@
                 <div class="wb mn" title="${esc(t.minimize)}">&#8211;</div>
                 <div class="wb x" title="${esc(t.close)}">&#10005;</div>
             </div>
-
             <div class="page details${tab === 'details' ? ' act' : ''}">
                 <div class="tools">
                     <input class="srch" placeholder="${esc(t.search)}" spellcheck="false">
@@ -500,12 +544,10 @@
                     <button class="ref">${ICON_REF}${esc(t.refresh)}</button>
                 </div>
             </div>
-
             <div class="page settings${tab === 'settings' ? ' act' : ''}">
                 <div class="bd">${settingsBody()}</div>
                 <div class="ft"><button class="reset">${ICON_RESET}${esc(t.reset)}</button></div>
             </div>
-
             <div class="sb"><span class="led${busy ? ' busy' : ''}"></span><span class="st"></span><span class="r"></span></div>`;
 
         $('.srch').value = q;
@@ -522,7 +564,6 @@
         if (!items.length) setStatus(() => T().nothing);
     };
 
-    // ---- event wiring ---------------------------------------------------
     const wire = () => {
         panel.querySelectorAll('.tab').forEach((el) => {
             el.onclick = () => { tab = el.dataset.tab; build(); };
@@ -538,14 +579,13 @@
 
         panel.querySelectorAll('.cat').forEach((el) => {
             el.onclick = () => {
-                const key = el.dataset.cat;
-                collapsed[key] = !collapsed[key];
-                el.classList.toggle('closed', collapsed[key]);
-                panel.querySelector(`[data-rows="${key}"]`)?.classList.toggle('closed', collapsed[key]);
+                const k = el.dataset.cat;
+                collapsed[k] = !collapsed[k];
+                el.classList.toggle('closed', collapsed[k]);
+                panel.querySelector(`[data-rows="${k}"]`)?.classList.toggle('closed', collapsed[k]);
             };
         });
 
-        // details page
         const srch = $('.srch');
         srch.addEventListener('input', applySearch);
         srch.addEventListener('keydown', (e) => e.stopPropagation());
@@ -570,7 +610,6 @@
         };
         $('.ref').onclick = () => { refreshData(); setStatus(() => T().refreshed); };
 
-        // settings page
         $('.lang').onchange = (e) => {
             cfg.lang = e.target.value;
             save();
@@ -579,11 +618,11 @@
         };
         panel.querySelectorAll('.chk').forEach((el) => {
             el.onclick = () => {
-                const key = el.dataset.key;
-                cfg[key] = !cfg[key];
-                el.classList.toggle('on', cfg[key]);
+                const k = el.dataset.key;
+                cfg[k] = !cfg[k];
+                el.classList.toggle('on', cfg[k]);
                 save();
-                if (key === 'autoRefresh') toggleObserver();
+                if (k === 'autoRefresh') toggleObserver();
                 setStatus(() => T().saved);
             };
         });
@@ -603,7 +642,6 @@
             build();
         };
 
-        // dragging
         $('.tb').addEventListener('mousedown', (e) => {
             if (e.target.closest('.wb, .tab')) return;
             e.preventDefault();
@@ -620,13 +658,10 @@
         });
     };
 
-    // ---- auto-refresh if the board is rebuilt without a page load ---------
-    // (Only structural changes; question switching in multiple choice is
-    //  picked up by the light poll below instead.)
     const board = document.querySelector('form#response') || document.body;
     let timer;
     let lastSig = '';
-    const signature = () => items.map((it) => it.problem + '=' + it.answer).join('|');
+    const signature = () => (mode?.key || '') + ':' + items.map((it) => it.problem + '=' + it.answer).join('|');
     const observer = new MutationObserver((muts) => {
         if (busy) return;
         const ours = muts.every((m) =>
@@ -653,7 +688,6 @@
         if (document.getElementById(ID)) markFilled();
     }, 500);
 
-    // ---- start ----------------------------------------------------------
     refreshData();
     lastSig = signature();
     if (cfg.autoFill && items.length) fillAll();
