@@ -7,6 +7,7 @@ A cheat you can just paste into the console and it pops a UI.
 - Multiple choice
 - Written answers
 - Memory
+- Letter board
 
 ## Running
 
